@@ -4,6 +4,7 @@
   "logging": {
     "level": "trace"
   },
+  "supportsAdditionalCustomTypes": true,
   "dataTypes": [
     "IPv4",
     {
@@ -218,7 +219,7 @@
     {
       "key": "query",
       "name": "SQL Query",
-      "description": "The SQL query to execute for each entity searched. Supports both parameterized and non-parameterized queries:\\n\\n• **Parameterized**: Use `?` as placeholder for entity value. Multiple `?` parameters are supported and will all use the same entity value - Examples:\\n  - \"SELECT * FROM logs WHERE ip = ?\"\\n  - \"SELECT * FROM events WHERE (src_ip = ? OR dst_ip = ?)\"\\n• **Non-parameterized**: Static queries without entity substitution - Example: \"SELECT COUNT(*) FROM logs WHERE date = CURRENT_DATE\"\\n\\nAll `?` parameters will be replaced with the searched entity value.",
+      "description": "The SQL query to execute for each entity searched. Supports both parameterized and non-parameterized queries. **Parameterized**: Use `?` as placeholder for entity value. Multiple `?` parameters are supported and will all use the same entity value - Examples:  - \"SELECT * FROM logs WHERE ip = ?\" - \"SELECT * FROM events WHERE (src_ip = ? OR dst_ip = ?)\" • **Non-parameterized**: Static queries without entity substitution - Example: \"SELECT COUNT(*) FROM logs WHERE date = CURRENT_DATE\" All `?` parameters will be replaced with the searched entity value.",
       "default": "",
       "type": "text",
       "userCanEdit": false,

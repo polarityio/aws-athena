@@ -14,7 +14,11 @@ const {
 const { get } = require('lodash');
 const { DateTime } = require('luxon');
 
+const entityTemplateReplacementRegex = /{{entity}}/g;
 
+// Athena query execution configuration constants
+const MAX_QUERY_ATTEMPTS = 15; // 45 seconds / 3 second intervals = 15 attempts  
+const QUERY_WAIT_INTERVAL = 3000; // 3 second intervals
 
 let Logger;
 let originalOptions = {};
@@ -114,7 +118,7 @@ async function ensurePreparedStatement(query, options) {
         QueryStatement: processedQuery,
         WorkGroup: options.workGroup || 'primary'
       });
-      
+
       await athenaClient.send(updateCommand);
       Logger.trace({ statementName }, 'Successfully updated prepared statement');
     } else {
@@ -126,7 +130,7 @@ async function ensurePreparedStatement(query, options) {
         QueryStatement: processedQuery,
         WorkGroup: options.workGroup || 'primary'
       });
-      
+
       await athenaClient.send(createCommand);
       Logger.trace({ statementName }, 'Successfully created prepared statement');
     }
@@ -181,12 +185,15 @@ function createParameterValue(entityValue, type = 'string') {
   }
 }
 
-async function createQuery(entity, options) {
-  // Always use prepared statements, but handle both parameterized and non-parameterized queries
-  const preparedStatementName = await ensurePreparedStatement(options.query, options);
-  
+async function createQuery(entity, options, preparedStatementName = null) {
   let queryString;
+  
   if (options.query.includes('?')) {
+    // Use the prepared statement name passed in (already ensured in doLookup)
+    if (!preparedStatementName) {
+      throw new Error('Prepared statement name required for parameterized queries');
+    }
+    
     // Get type hints that were extracted during prepared statement creation
     const typeHints = options._typeHints || [];
     const parameterCount = typeHints.length;
@@ -222,8 +229,8 @@ async function createQuery(entity, options) {
       query: options.query 
     }, 'Created type-hinted parameterized query execution');
   } else {
-    // Query has no parameters, use EXECUTE without USING
-    queryString = `EXECUTE ${preparedStatementName}`;
+    // Query has no parameters, execute the raw query directly
+    queryString = options.query;
   }
   
   const queryParams = {
@@ -265,15 +272,13 @@ async function executeAthenaQuery(athenaClient, queryParams, options) {
   const queryExecutionId = startResult.QueryExecutionId;
   Logger.trace({ queryExecutionId }, 'Started Athena query execution');
   
-  // Wait for query to complete with 45 second timeout
+  // Wait for query to complete with timeout
   let queryStatus = 'RUNNING';
   let attempts = 0;
   let statusResult = null;
-  const maxAttempts = 15; // 45 seconds / 3 second intervals = 15 attempts
-  const waitInterval = 3000; // 3 second intervals
   
   while (queryStatus === 'RUNNING' || queryStatus === 'QUEUED') {
-    if (attempts >= maxAttempts) {
+    if (attempts >= MAX_QUERY_ATTEMPTS) {
       Logger.trace({ queryExecutionId, attempts }, 'Query execution timeout reached, returning queryExecutionId for later polling');
       return {
         results: undefined,
@@ -282,7 +287,7 @@ async function executeAthenaQuery(athenaClient, queryParams, options) {
       };
     }
     
-    await new Promise(resolve => setTimeout(resolve, waitInterval));
+    await new Promise(resolve => setTimeout(resolve, QUERY_WAIT_INTERVAL));
     
     const statusCommand = new GetQueryExecutionCommand({ QueryExecutionId: queryExecutionId });
     statusResult = await athenaClient.send(statusCommand);
@@ -494,13 +499,15 @@ function getDocumentTitle(result, options) {
   return null;
 }
 
-function getDetails(results, options) {
+function getDetails(results, options, complete = true, queryExecutionId = null) {
   // If no detail attributes are specified then we just display the
   // whatever Athena returns using the JSON viewer
   if (!options.detailAttributes || typeof options.detailAttributes !== 'string' || options.detailAttributes.trim().length === 0) {
     return {
       showAsJson: true,
-      results
+      results,
+      complete,
+      queryExecutionId
     };
   }
 
@@ -542,7 +549,9 @@ function getDetails(results, options) {
 
   return {
     showAsJson: false,
-    results: details
+    results: details,
+    complete,
+    queryExecutionId
   };
 }
 
@@ -603,9 +612,15 @@ async function doLookup(entities, options, cb) {
     currentQuery = null;
   }
 
+  // Ensure prepared statement exists once per doLookup call, not per entity
+  let preparedStatementName = null;
+  if (options.query.includes('?')) {
+    preparedStatementName = await ensurePreparedStatement(options.query, options);
+  }
+
   const searchTasks = entities.map((entity) => {
     return async () => {
-      const queryParams = await createQuery(entity, options);
+      const queryParams = await createQuery(entity, options, preparedStatementName);
       Logger.trace({ queryParams }, 'Athena SQL query parameters');
       
       const queryResult = await executeAthenaQuery(athenaClient, queryParams, options);
@@ -639,11 +654,17 @@ async function doLookup(entities, options, cb) {
         };
       } else {
         Logger.trace({ results: queryResult.results }, 'JSON Results from Athena');
+        
+        // Set summary based on completion status
+        const summary = queryResult.complete 
+          ? getSummaryTags(queryResult.results, options)
+          : ["Results pending"];
+          
         return {
           entity,
           data: {
-            summary: getSummaryTags(queryResult.results, options),
-            details: getDetails(queryResult.results, options)
+            summary: summary,
+            details: getDetails(queryResult.results, options, queryResult.complete, queryResult.queryExecutionId)
           }
         };
       }

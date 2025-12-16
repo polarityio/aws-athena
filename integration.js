@@ -280,10 +280,33 @@ async function executeAthenaQuery(athenaClient, queryParams, options) {
   while (queryStatus === 'RUNNING' || queryStatus === 'QUEUED') {
     if (attempts >= MAX_QUERY_ATTEMPTS) {
       Logger.trace({ queryExecutionId, attempts }, 'Query execution timeout reached, returning queryExecutionId for later polling');
+      
+      // Extract partial execution stats for running queries
+      const partialStats = statusResult?.QueryExecution?.Statistics || {};
+      const queryExecution = statusResult?.QueryExecution || {};
+      const submissionTime = queryExecution.Status?.SubmissionDateTime;
+      let elapsedMs = null;
+      let elapsedSeconds = null;
+      
+      if (submissionTime) {
+        elapsedMs = Date.now() - new Date(submissionTime);
+        elapsedSeconds = (elapsedMs / 1000).toFixed(3);
+      }
+      
+      const incompleteStats = {
+        runtimeMs: null, // Not available until completion
+        runtimeSeconds: null,
+        elapsedMs: elapsedMs,
+        elapsedSeconds: elapsedSeconds,
+        dataScannedBytes: partialStats.DataScannedInBytes || null,
+        status: 'RUNNING'
+      };
+      
       return {
         results: undefined,
         complete: false,
-        queryExecutionId: queryExecutionId
+        queryExecutionId: queryExecutionId,
+        executionStats: incompleteStats
       };
     }
     
@@ -304,6 +327,37 @@ async function executeAthenaQuery(athenaClient, queryParams, options) {
     throw new Error(errorMsg);
   }
   
+  // Extract execution statistics from Athena
+  const executionStats = statusResult.QueryExecution.Statistics || {};
+  const queryExecution = statusResult.QueryExecution || {};
+  
+  // Calculate runtime information
+  const submissionTime = queryExecution.Status?.SubmissionDateTime;
+  const completionTime = queryExecution.Status?.CompletionDateTime;
+  let runtimeMs = null;
+  let runtimeSeconds = null;
+  
+  if (submissionTime && completionTime) {
+    runtimeMs = new Date(completionTime) - new Date(submissionTime);
+    runtimeSeconds = (runtimeMs / 1000).toFixed(3);
+  }
+  
+  // Athena provides execution time in milliseconds in Statistics.EngineExecutionTimeInMillis
+  const athenaRuntimeMs = executionStats.EngineExecutionTimeInMillis || null;
+  const athenaRuntimeSeconds = athenaRuntimeMs ? (athenaRuntimeMs / 1000).toFixed(3) : null;
+  
+  const queryStats = {
+    runtimeMs: athenaRuntimeMs || runtimeMs,
+    runtimeSeconds: athenaRuntimeSeconds || runtimeSeconds,
+    dataScannedBytes: executionStats.DataScannedInBytes || null,
+    dataProcessedBytes: executionStats.DataProcessedInBytes || null,
+    queryQueueTimeMs: executionStats.QueryQueueTimeInMillis || null,
+    queryPlanningTimeMs: executionStats.QueryPlanningTimeInMillis || null,
+    serviceProcessingTimeMs: executionStats.ServiceProcessingTimeInMillis || null
+  };
+  
+  Logger.trace({ queryStats, executionStats }, 'Athena query execution statistics');
+  
   // Get query results
   const resultsCommand = new GetQueryResultsCommand({ 
     QueryExecutionId: queryExecutionId,
@@ -319,7 +373,8 @@ async function executeAthenaQuery(athenaClient, queryParams, options) {
     return {
       results: [],
       complete: true,
-      queryExecutionId: queryExecutionId
+      queryExecutionId: queryExecutionId,
+      executionStats: queryStats
     };
   }
   
@@ -338,7 +393,8 @@ async function executeAthenaQuery(athenaClient, queryParams, options) {
   return {
     results: results,
     complete: true,
-    queryExecutionId: queryExecutionId
+    queryExecutionId: queryExecutionId,
+    executionStats: queryStats
   };
 }
 
@@ -499,15 +555,16 @@ function getDocumentTitle(result, options) {
   return null;
 }
 
-function getDetails(results, options, complete = true, queryExecutionId = null) {
+function getDetails(results, options, complete = true, queryExecutionId = null, executionStats = null) {
   // If no detail attributes are specified then we just display the
   // whatever Athena returns using the JSON viewer
   if (!options.detailAttributes || typeof options.detailAttributes !== 'string' || options.detailAttributes.trim().length === 0) {
     return {
       showAsJson: true,
       results,
-      complete,
-      queryExecutionId
+      complete: complete,
+      queryExecutionId: queryExecutionId,
+      executionStats: executionStats
     };
   }
 
@@ -550,8 +607,9 @@ function getDetails(results, options, complete = true, queryExecutionId = null) 
   return {
     showAsJson: false,
     results: details,
-    complete,
-    queryExecutionId
+    complete: complete,
+    queryExecutionId: queryExecutionId,
+    executionStats: executionStats
   };
 }
 
@@ -629,6 +687,23 @@ async function doLookup(entities, options, cb) {
       if (!queryResult.complete) {
         // Query is still running, return queryExecutionId for later polling
         Logger.trace({ queryExecutionId: queryResult.queryExecutionId }, 'Query still running, returning execution ID');
+        
+        // Build status attributes including execution stats if available
+        const statusAttributes = [
+          { key: 'Status', value: 'Running' },
+          { key: 'Query Execution ID', value: queryResult.queryExecutionId }
+        ];
+        
+        if (queryResult.executionStats) {
+          if (queryResult.executionStats.elapsedSeconds) {
+            statusAttributes.push({ key: 'Elapsed Time', value: `${queryResult.executionStats.elapsedSeconds}s` });
+          }
+          if (queryResult.executionStats.dataScannedBytes) {
+            const scannedMB = (queryResult.executionStats.dataScannedBytes / 1024 / 1024).toFixed(2);
+            statusAttributes.push({ key: 'Data Scanned', value: `${scannedMB} MB` });
+          }
+        }
+        
         return {
           entity,
           data: {
@@ -637,11 +712,11 @@ async function doLookup(entities, options, cb) {
               showAsJson: false,
               results: [{
                 title: 'Query Status',
-                attributes: [
-                  { key: 'Status', value: 'Running' },
-                  { key: 'Query Execution ID', value: queryResult.queryExecutionId }
-                ]
-              }]
+                attributes: statusAttributes
+              }],
+              complete: false,
+              queryExecutionId: queryResult.queryExecutionId,
+              executionStats: queryResult.executionStats
             }
           }
         };
@@ -664,7 +739,7 @@ async function doLookup(entities, options, cb) {
           entity,
           data: {
             summary: summary,
-            details: getDetails(queryResult.results, options, queryResult.complete, queryResult.queryExecutionId)
+            details: getDetails(queryResult.results, options, queryResult.complete, queryResult.queryExecutionId, queryResult.executionStats)
           }
         };
       }

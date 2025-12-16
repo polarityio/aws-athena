@@ -1,6 +1,7 @@
 'use strict';
 polarity.export = PolarityComponent.extend({
   details: Ember.computed.alias('block.data.details'),
+  errorMessage: '',
   // Session Paging Variables
   filterValue: '',
   currentPage: 1,
@@ -71,7 +72,26 @@ polarity.export = PolarityComponent.extend({
       const totalResults = this.get('filteredPagingData.length');
       const totalPages = Math.ceil(totalResults / this.get('pageSize'));
       this.set('currentPage', totalPages);
-    }
+    },
     // End Paging Actions
+    checkQueryStatus() {
+      this.set('checkingStatus', true);
+      const payload = {
+        action: 'CHECK_QUERY_STATUS',
+        queryExecutionId: this.get('details.queryExecutionId')
+      };
+      this.sendIntegrationMessage(payload)
+        .then((result) => {
+          if (result.details.complete) {
+            this.set('block.data', result);
+          }
+        })
+        .catch((err) => {
+          this.set('errorMessage', JSON.stringify(err, null, 2));
+        })
+        .finally(() => {
+          this.set('checkingStatus', false);
+        });
+    }
   }
 });

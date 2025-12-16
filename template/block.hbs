@@ -1,0 +1,98 @@
+{{#if details.showAsJson}}
+  <JsonViewer
+    @json={{details.results}}
+    @options={{hash
+      expandedIcon="▼"
+      collapsedIcon="▶︎"
+      collapseDepth=100
+    }}
+  />
+{{else}}
+  {{!-- Begining of Data Filter --}}
+  <div class="input-container">
+    <label class="small ifta-label">
+      Filter for Hostname or Address
+    </label>
+    {{input
+            class=(concat "ifta-field" (if uiElement.error " error"))
+            value=filterValue
+            placeholder="Enter filter value"
+            disabled=false
+            required=false
+    }}
+    {{#if (gt filterValue.length 0)}}
+      <span {{action (mut filterValue "")}}>
+        {{fa-icon icon="times-circle" fixedWidth=true class="clear-input-icon"}}
+      </span>
+    {{/if}}
+  </div>
+  {{!-- End of Data Filter --}}
+
+  {{!-- Beginning of Paging Header --}}
+  {{#if (gt filteredPagingData.length 0)}}
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <div class="pl-0 page-info p-footnote">
+        {{#if (gt filteredPagingData.length pageSize)}}
+          Viewing search results {{pagingStartItem}} - {{pagingEndItem}} of {{filteredPagingData.length}}
+        {{else}}
+          Viewing {{filteredPagingData.length}} search results
+        {{/if}}
+      </div>
+    </div>
+  {{else}}
+    <div class="p-footnote">
+      No results found
+    </div>
+  {{/if}}
+  {{!-- End of Paging Header --}}
+  {{#each pagedFilteredData as | document index| }}
+    <div class="result-container">
+      {{#if document.title}}
+        <h1 class="p-title">{{document.title}}</h1>
+      {{else}}
+        <h1 class="p-title">Item #{{index}}</h1>
+      {{/if}}
+  
+      {{#each document.attributes as | attribute |}}
+        <div>
+          <span class="p-key">{{attribute.key}}: </span>
+          <span class="p-value">{{attribute.value}}</span>
+        </div>
+      {{/each}}
+    </div>
+  {{/each}}
+  {{!-- Result Paging component --}}
+  {{#if (gt filteredPagingData.length pageSize)}}
+    <div class="paging-bar">
+      <div>
+        <span class="paging-bar-title">{{block.acronym}}</span>
+      </div>
+      <div class="d-flex align-items-center">
+        <button class="btn paging-btn" {{action "firstPage"}} disabled={{isPrevButtonsDisabled}}>
+          {{fa-icon icon="angle-double-left" fixedWidth=false}}
+        </button>
+        <button class="btn paging-btn" {{action "prevPage"}} disabled={{isPrevButtonsDisabled}}>
+          {{fa-icon icon="angle-left" fixedWidth=false}}
+        </button>
+        <div class="paging-info">
+          {{#if (eq pageSize 1)}}
+            {{pagingStartItem}} of {{filteredPagingData.length}}
+          {{else}}
+            {{pagingStartItem}} - {{pagingEndItem}} of {{filteredPagingData.length}}
+          {{/if}}
+        </div>
+        <button class="btn paging-btn" {{action "nextPage"}} disabled={{isNextButtonDisabled}}>
+          {{fa-icon icon="angle-right" fixedWidth=false}}
+        </button>
+        <button class="btn paging-btn" {{action "lastPage"}} disabled={{isNextButtonDisabled}}>
+          {{fa-icon icon="angle-double-right" fixedWidth=false}}
+        </button>
+      </div>
+    </div>
+  {{/if}}
+  {{!-- End of Paging Component --}}
+  {{#if (eq details.results.length 0)}}
+    <h1 class="p-title">{{fa-icon icon="exclamation-triangle" fixedWidth=true}} Possible Integration Configuration Issue</h1>
+    <span>No matching details fields. Check the "Detail Attributes" option to ensure that the specified fields exist in the query results.</span>
+  {{/if}}
+{{/if}}

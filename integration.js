@@ -689,7 +689,10 @@ function getSummaryTags(results, options) {
     tags.push(`${results.length} ${results.length === 1 ? 'result' : 'results'}`);
   }
 
-  return tags;
+  // Remove duplicate tags as final cleanup step
+  const uniqueTags = [...new Set(tags)];
+  
+  return uniqueTags;
 }
 
 async function doLookup(entities, options, cb) {
@@ -809,8 +812,8 @@ function validateOptions(userOptions, cb) {
 
   // Validate required accessKeyId field
   if (
-    typeof userOptions.accessKeyId !== 'string' ||
-    (typeof userOptions.accessKeyId === 'string' && userOptions.accessKeyId.trim().length === 0)
+    typeof userOptions.accessKeyId.value !== 'string' ||
+    (typeof userOptions.accessKeyId.value === 'string' && userOptions.accessKeyId.value.trim().length === 0)
   ) {
     errors.push({
       key: 'accessKeyId',
@@ -820,8 +823,8 @@ function validateOptions(userOptions, cb) {
 
   // Validate required secretAccessKey field
   if (
-    typeof userOptions.secretAccessKey !== 'string' ||
-    (typeof userOptions.secretAccessKey === 'string' && userOptions.secretAccessKey.trim().length === 0)
+    typeof userOptions.secretAccessKey.value !== 'string' ||
+    (typeof userOptions.secretAccessKey.value === 'string' && userOptions.secretAccessKey.value.trim().length === 0)
   ) {
     errors.push({
       key: 'secretAccessKey',

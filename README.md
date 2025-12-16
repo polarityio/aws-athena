@@ -35,9 +35,42 @@ The SQL query to execute for each entity searched. Supports both parameterized a
 • **Parameterized**: Use `?` as placeholder for entity value. Multiple `?` parameters are supported and will all use the same entity value - Examples:
   - "SELECT * FROM logs WHERE ip = ?"
   - "SELECT * FROM events WHERE (src_ip = ? OR dst_ip = ?)"
+
+• **Type Hints**: Use `?:<type>` to specify the data type for type-sensitive columns - Examples:
+  - "SELECT * FROM logs WHERE port = ?:integer"
+  - "SELECT * FROM events WHERE src_ip = ? OR dst_port = ?:integer"
+  - "SELECT * FROM data WHERE active = ?:boolean AND score = ?:decimal"
+
 • **Non-parameterized**: Static queries without entity substitution - Example: "SELECT COUNT(*) FROM logs WHERE date = CURRENT_DATE"
 
-All `?` parameters will be replaced with the searched entity value.
+**Supported Type Hints:**
+- `string`, `varchar`, `char` (default) - Text values
+- `integer`, `int`, `bigint` - Whole numbers  
+- `decimal`, `double`, `float`, `real` - Decimal numbers
+- `boolean`, `bool` - True/false values (accepts true, false, 1, 0)
+
+All `?` parameters will be replaced with the searched entity value, converted to the specified type.
+
+**Example Usage:**
+```sql
+-- Mixed type query for network traffic analysis
+SELECT * FROM netflow_logs 
+WHERE src_ip = ? OR dst_ip = ? OR dst_port = ?:integer 
+ORDER BY timestamp DESC
+
+-- For entity "80":
+-- src_ip = '80' (unlikely to match IPs, but possible) 
+-- dst_ip = '80' (unlikely to match IPs, but possible)
+-- dst_port = 80 (will match port 80 as integer)
+
+-- Boolean flag query  
+SELECT * FROM user_sessions 
+WHERE username = ? OR is_admin = ?:boolean
+
+-- For entity "true":
+-- username = 'true' (matches username literally)
+-- is_admin = true (matches boolean field)
+```
 
 ### Query Result Limit
 

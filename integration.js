@@ -52,14 +52,41 @@ function escapeEntityValue(entityValue) {
   return escapedValue;
 }
 
+function parseTypeHints(query) {
+  // Parse ?:<type> syntax and extract type information
+  const typeHints = [];
+  let parameterIndex = 0;
+  
+  // Match both ? and ?:<type> patterns
+  const modifiedQuery = query.replace(/\?(?::(\w+))?/g, (match, typeHint) => {
+    typeHints.push({
+      index: parameterIndex,
+      type: typeHint || 'string' // Default to string if no type specified
+    });
+    parameterIndex++;
+    return '?'; // Replace with plain ? for the prepared statement
+  });
+  
+  return {
+    query: modifiedQuery,
+    typeHints: typeHints
+  };
+}
+
 async function ensurePreparedStatement(query, options) {
   // Get the directory name to make the statement name unique
   // Replace spaces with underscores to ensure valid statement name
   const directoryName = path.basename(__dirname).replace(/\s+/g, '_');
   const statementName = `polarity_prepared_statement_${directoryName}`;
   
+  // Parse type hints from the query (converts ?:<type> to ? and extracts type info)
+  const { query: processedQuery, typeHints } = parseTypeHints(query);
+  
+  // Store type hints for parameter creation
+  options._typeHints = typeHints;
+  
   // Check if we need to create or update the prepared statement
-  if (currentQuery !== query || currentPreparedStatement === null) {
+  if (currentQuery !== processedQuery || currentPreparedStatement === null) {
     
     // Always check if the prepared statement exists first
     const getCommand = new GetPreparedStatementCommand({
@@ -80,11 +107,11 @@ async function ensurePreparedStatement(query, options) {
     
     if (statementExists) {
       // Statement exists, update it with the new query
-      Logger.trace({ statementName, query }, 'Updating existing prepared statement');
+      Logger.trace({ statementName, originalQuery: query, processedQuery, typeHints }, 'Updating existing prepared statement');
       
       const updateCommand = new UpdatePreparedStatementCommand({
         StatementName: statementName,
-        QueryStatement: query,
+        QueryStatement: processedQuery,
         WorkGroup: options.workGroup || 'primary'
       });
       
@@ -92,11 +119,11 @@ async function ensurePreparedStatement(query, options) {
       Logger.trace({ statementName }, 'Successfully updated prepared statement');
     } else {
       // Statement doesn't exist, create it
-      Logger.trace({ statementName, query }, 'Creating new prepared statement');
+      Logger.trace({ statementName, originalQuery: query, processedQuery, typeHints }, 'Creating new prepared statement');
       
       const createCommand = new CreatePreparedStatementCommand({
         StatementName: statementName,
-        QueryStatement: query,
+        QueryStatement: processedQuery,
         WorkGroup: options.workGroup || 'primary'
       });
       
@@ -106,10 +133,52 @@ async function ensurePreparedStatement(query, options) {
     
     // Update our cached values
     currentPreparedStatement = statementName;
-    currentQuery = query;
+    currentQuery = processedQuery;
   }
   
   return currentPreparedStatement;
+}
+
+function createParameterValue(entityValue, type = 'string') {
+  const escapedValue = escapeEntityValue(entityValue);
+  
+  switch (type.toLowerCase()) {
+    case 'integer':
+    case 'int':
+    case 'bigint':
+      const intValue = parseInt(entityValue, 10);
+      if (isNaN(intValue)) {
+        throw new Error(`Cannot convert "${entityValue}" to integer type`);
+      }
+      return String(intValue);
+      
+    case 'decimal':
+    case 'double':
+    case 'float':
+    case 'real':
+      const floatValue = parseFloat(entityValue);
+      if (isNaN(floatValue)) {
+        throw new Error(`Cannot convert "${entityValue}" to numeric type`);
+      }
+      return String(floatValue);
+      
+    case 'boolean':
+    case 'bool':
+      const lowerValue = entityValue.toLowerCase();
+      if (lowerValue === 'true' || lowerValue === '1') {
+        return 'true';
+      } else if (lowerValue === 'false' || lowerValue === '0') {
+        return 'false';
+      } else {
+        throw new Error(`Cannot convert "${entityValue}" to boolean type`);
+      }
+      
+    case 'string':
+    case 'varchar':
+    case 'char':
+    default:
+      return `'${escapedValue}'`;
+  }
 }
 
 async function createQuery(entity, options) {
@@ -118,17 +187,40 @@ async function createQuery(entity, options) {
   
   let queryString;
   if (options.query.includes('?')) {
-    // Count the number of ? parameters in the query
-    const parameterCount = (options.query.match(/\?/g) || []).length;
+    // Get type hints that were extracted during prepared statement creation
+    const typeHints = options._typeHints || [];
+    const parameterCount = typeHints.length;
     
-    // Create parameter list - repeat the entity value for each ? parameter
-    const escapedEntityValue = escapeEntityValue(entity.value);
-    const parameters = Array(parameterCount).fill(`'${escapedEntityValue}'`).join(', ');
+    // Create parameter list using type hints
+    const parameters = [];
+    for (let i = 0; i < parameterCount; i++) {
+      const typeHint = typeHints[i];
+      try {
+        const parameterValue = createParameterValue(entity.value, typeHint.type);
+        parameters.push(parameterValue);
+      } catch (error) {
+        Logger.error({ 
+          error: error.message, 
+          entityValue: entity.value, 
+          expectedType: typeHint.type,
+          parameterIndex: i 
+        }, 'Failed to convert entity value to expected type');
+        throw new Error(`Parameter ${i + 1}: ${error.message}`);
+      }
+    }
+    
+    const parametersString = parameters.join(', ');
     
     // Query has parameters, use EXECUTE with USING
-    queryString = `EXECUTE ${preparedStatementName} USING ${parameters}`;
+    queryString = `EXECUTE ${preparedStatementName} USING ${parametersString}`;
     
-    Logger.trace({ parameterCount, parameters, query: options.query }, 'Created parameterized query execution');
+    Logger.trace({ 
+      parameterCount, 
+      parameters: parametersString, 
+      entityValue: entity.value, 
+      typeHints,
+      query: options.query 
+    }, 'Created type-hinted parameterized query execution');
   } else {
     // Query has no parameters, use EXECUTE without USING
     queryString = `EXECUTE ${preparedStatementName}`;
@@ -572,6 +664,30 @@ async function doLookup(entities, options, cb) {
 
 function validateOptions(userOptions, cb) {
   let errors = [];
+  
+  // Validate required accessKeyId field
+  if (
+    typeof userOptions.accessKeyId !== 'string' ||
+    (typeof userOptions.accessKeyId === 'string' && userOptions.accessKeyId.trim().length === 0)
+  ) {
+    errors.push({
+      key: 'accessKeyId',
+      message: 'You must provide a valid AWS Access Key ID'
+    });
+  }
+
+  // Validate required secretAccessKey field
+  if (
+    typeof userOptions.secretAccessKey !== 'string' ||
+    (typeof userOptions.secretAccessKey === 'string' && userOptions.secretAccessKey.trim().length === 0)
+  ) {
+    errors.push({
+      key: 'secretAccessKey',
+      message: 'You must provide a valid AWS Secret Access Key'
+    });
+  }
+
+  // Validate required query field
   if (
     typeof userOptions.query.value !== 'string' ||
     (typeof userOptions.query.value === 'string' && userOptions.query.value.length === 0)
@@ -581,12 +697,6 @@ function validateOptions(userOptions, cb) {
       message: 'You must provide a valid SQL Query'
     });
   }
-
-  // We now support both parameterized (with ?) and non-parameterized (without ?) queries
-  // No validation needed for ? parameters
-
-  // OutputLocation is optional if WorkGroup has default ResultConfiguration
-  // No validation needed for outputLocation
 
   cb(null, errors);
 }

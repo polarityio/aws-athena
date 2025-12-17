@@ -19,7 +19,35 @@
   />
 {{else if details.complete}}
   {{#if (eq details.results.length 0)}}
-    No results found
+    <div class="d-flex align-items-center justify-content-between">
+      <div>No results found</div>
+      <div>
+          <span>
+            {{fa-icon icon="info-circle" class="stats-icon" fixedWidth=true}}
+            {{#bs-tooltip}}
+              <div style="text-align: left">
+                <div><strong>Query Statistics</strong></div>
+                <div>
+                  <span style="color: #cdced6;">Runtime:</span>
+                  <span>{{details.executionStats.runtimeSeconds}} seconds</span>
+                </div>
+                <div>
+                  <span style="color: #cdced6;">Queue Time:</span>
+                  <span>{{details.executionStats.queryQueueTimeMs}} ms</span>
+                </div>
+                <div>
+                  <span style="color: #cdced6;">Planning Time:</span>
+                  <span>{{details.executionStats.queryPlanningTimeMs}} ms</span>
+                </div>
+                <div>
+                  <span style="color: #cdced6;">Scanned Bytes:</span>
+                  <span>{{details.executionStats.dataScannedBytes}} bytes</span>
+                </div>
+              </div>
+            {{/bs-tooltip}}
+          </span>
+      </div>
+    </div>
   {{else}}
   {{!-- Begining of Data Filter --}}
     <div class="input-container">
@@ -50,6 +78,32 @@
           {{else}}
             Viewing {{filteredPagingData.length}} search results
           {{/if}}
+        </div>
+        <div>
+          <span>
+            {{fa-icon icon="info-circle" class="stats-icon" fixedWidth=true}}
+            {{#bs-tooltip}}
+              <div style="text-align: left">
+                <div><strong>Query Statistics</strong></div>
+                <div>
+                  <span style="color: #cdced6;">Runtime:</span>
+                  <span>{{details.executionStats.runtimeSeconds}} seconds</span>
+                </div>
+                <div>
+                  <span style="color: #cdced6;">Queue Time:</span>
+                  <span>{{details.executionStats.queryQueueTimeMs}} ms</span>
+                </div>
+                <div>
+                  <span style="color: #cdced6;">Planning Time:</span>
+                  <span>{{details.executionStats.queryPlanningTimeMs}} ms</span>
+                </div>
+                <div>
+                  <span style="color: #cdced6;">Scanned Bytes:</span>
+                  <span>{{details.executionStats.dataScannedBytes}} bytes</span>
+                </div>
+              </div>
+            {{/bs-tooltip}}
+          </span>
         </div>
       </div>
     {{else}}
@@ -111,14 +165,31 @@
   {{/if}}
 {{else}}
   {{!-- Query is still running --}}
-  <button type="button" class="btn btn-polarity btn-sm retry-btn"{{action "checkQueryStatus"}}>
-    {{#if checkingStatus}}
-      {{fa-icon icon="spinner-third" fixedWidth=true spin=true}}
-    {{else}}
-      Check Query Status
-    {{/if}}
-  </button>
+  <div class="d-flex align-items-start justify-content-between">
+    <button type="button" class="btn btn-polarity btn-sm retry-btn"{{action "checkQueryStatus"}}>
+      {{#if checkingStatus}}
+        {{fa-icon icon="spinner-third" fixedWidth=true spin=true}}
+      {{else}}
+        Check Query Status
+      {{/if}}
+    </button>
+    <div>
+            <span>
+              {{fa-icon icon="info-circle" class="stats-icon" fixedWidth=true}}
+              {{#bs-tooltip}}
+                <div style="text-align: left">
+                  <div><strong>Query Statistics</strong></div>
+                  <div>
+                    <span style="color: #cdced6;">Elapsed time:</span>
+                    <span>{{details.executionStats.elapsedSeconds}} seconds</span>
+                  </div>
+                </div>
+              {{/bs-tooltip}}
+            </span>
+    </div>
+  </div>
   <div class="mt-1">
     <span class="p-footnote">The query is still running. You can check the status of the query by clicking on the "Check Query Status" button.</span>
   </div>
 {{/if}}
+

@@ -309,13 +309,9 @@ async function executeAthenaQuery(athenaClient, queryParams, options) {
       const partialStats = statusResult?.QueryExecution?.Statistics || {};
       const queryExecution = statusResult?.QueryExecution || {};
       const submissionTime = queryExecution.Status?.SubmissionDateTime;
-      let elapsedMs = null;
-      let elapsedSeconds = null;
-
-      if (submissionTime) {
-        elapsedMs = Date.now() - new Date(submissionTime);
-        elapsedSeconds = (elapsedMs / 1000).toFixed(3);
-      }
+      
+      // Use helper function to calculate elapsed time
+      const { elapsedMs, elapsedSeconds } = calculateElapsedTime(submissionTime);
 
       const incompleteStats = {
         runtimeMs: null, // Not available until completion
@@ -920,13 +916,9 @@ async function checkQueryStatusAndGetResults(queryExecutionId, options) {
     const partialStats = statusResult.QueryExecution?.Statistics || {};
     const queryExecution = statusResult.QueryExecution || {};
     const submissionTime = queryExecution.Status?.SubmissionDateTime;
-    let elapsedMs = null;
-    let elapsedSeconds = null;
-
-    if (submissionTime) {
-      elapsedMs = Date.now() - new Date(submissionTime);
-      elapsedSeconds = (elapsedMs / 1000).toFixed(3);
-    }
+    
+    // Use helper function to calculate elapsed time
+    const { elapsedMs, elapsedSeconds } = calculateElapsedTime(submissionTime);
 
     const incompleteStats = {
       runtimeMs: null,
@@ -1056,6 +1048,23 @@ function setCachedDisplayAttributes(options) {
     detailAttributes: cachedDetailAttributes,
     summaryAttributes: cachedSummaryAttributes
   };
+}
+
+function calculateElapsedTime(submissionTime) {
+  if (!submissionTime) {
+    return { elapsedMs: null, elapsedSeconds: null };
+  }
+
+  const submissionDate = new Date(submissionTime);
+  // Validate the date and ensure non-negative elapsed time
+  if (!isNaN(submissionDate.getTime())) {
+    const elapsedMs = Math.max(0, Date.now() - submissionDate.getTime());
+    const elapsedSeconds = (elapsedMs / 1000).toFixed(3);
+    return { elapsedMs, elapsedSeconds };
+  } else {
+    Logger.warn({ submissionTime }, 'Invalid submission time format received from Athena');
+    return { elapsedMs: null, elapsedSeconds: null };
+  }
 }
 
 module.exports = {

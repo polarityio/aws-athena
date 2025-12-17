@@ -14,11 +14,9 @@ const {
 const { get } = require('lodash');
 const { DateTime } = require('luxon');
 
-const entityTemplateReplacementRegex = /{{entity}}/g;
-
 // Athena query execution configuration constants
-const MAX_QUERY_ATTEMPTS = 1; // 45 seconds / 3 second intervals = 15 attempts
-const QUERY_WAIT_INTERVAL = 100; // 3 second intervals
+const MAX_QUERY_STATUS_POLLING_ATTEMPTS = 10; // 10 attempts * 3 second interval = 30 seconds wait time 
+const POLLING_WAIT_INTERVAL = 3000; // 3 second intervals
 
 let Logger;
 let originalOptions = null;
@@ -26,16 +24,13 @@ let athenaClient = null;
 let currentPreparedStatement = null;
 let currentQuery = null;
 
-const origWarning = process.emitWarning;
-process.emitWarning = function (...args) {
-  if (Array.isArray(args) && args.length > 0 && args[0].startsWith('The AWS SDK for JavaScript (v3) will')) {
-    // Log the deprecation in our integration logs but don't bubble it up on stderr
-    Logger.warn({ args }, 'Node12 Deprecation Warning');
-  } else {
-    // pass any other warnings through normally
-    return origWarning.apply(process, args);
-  }
-};
+// Cached processed attributes to avoid recomputing on every lookup
+let cachedDocumentTitleAttributes = null;
+let cachedDetailAttributes = null;
+let cachedSummaryAttributes = null;
+let lastDocumentTitleAttributeOption = null;
+let lastDetailAttributesOption = null;
+let lastSummaryAttributesOption = null;
 
 function startup(logger) {
   Logger = logger;
@@ -301,7 +296,7 @@ async function executeAthenaQuery(athenaClient, queryParams, options) {
   let statusResult = null;
 
   while (queryStatus === 'RUNNING' || queryStatus === 'QUEUED') {
-    if (attempts >= MAX_QUERY_ATTEMPTS) {
+    if (attempts >= MAX_QUERY_STATUS_POLLING_ATTEMPTS) {
       Logger.trace(
         {
           queryExecutionId,
@@ -339,7 +334,7 @@ async function executeAthenaQuery(athenaClient, queryParams, options) {
       };
     }
 
-    await new Promise((resolve) => setTimeout(resolve, QUERY_WAIT_INTERVAL));
+    await new Promise((resolve) => setTimeout(resolve, POLLING_WAIT_INTERVAL));
 
     const statusCommand = new GetQueryExecutionCommand({ QueryExecutionId: queryExecutionId });
     statusResult = await athenaClient.send(statusCommand);
@@ -566,39 +561,26 @@ function processAttributeOption(attributeOption) {
   return fields;
 }
 
-function getDocumentTitle(result, options) {
-  if (
-    !options.documentTitleAttribute ||
-    typeof options.documentTitleAttribute !== 'string' ||
-    options.documentTitleAttribute.trim().length === 0
-  ) {
+function getDocumentTitle(result) {
+  // Use cached document title attributes if available
+  if (!cachedDocumentTitleAttributes || cachedDocumentTitleAttributes.length === 0) {
     return null;
   }
 
-  const titleAttributes = processAttributeOption(options.documentTitleAttribute);
-
-  if (titleAttributes[0]) {
-    const attributeObj = titleAttributes[0];
-    const attributeValue = get(result, attributeObj.attribute);
-    const parsedValue = parseAttribute(attributeValue, attributeObj.parser);
-    if (attributeObj.label) {
-      return `${attributeObj.label}: ${parsedValue}`;
-    } else {
-      return parsedValue;
-    }
+  const attributeObj = cachedDocumentTitleAttributes[0];
+  const attributeValue = get(result, attributeObj.attribute);
+  const parsedValue = parseAttribute(attributeValue, attributeObj.parser);
+  if (attributeObj.label) {
+    return `${attributeObj.label}: ${parsedValue}`;
+  } else {
+    return parsedValue;
   }
-
-  return null;
 }
 
 function getDetails(results, options, complete = true, queryExecutionId = null, executionStats = null) {
-  // If no detail attributes are specified then we just display the
+  // If no detail attributes are cached then we just display the
   // whatever Athena returns using the JSON viewer
-  if (
-    !options.detailAttributes ||
-    typeof options.detailAttributes !== 'string' ||
-    options.detailAttributes.trim().length === 0
-  ) {
+  if (!cachedDetailAttributes || cachedDetailAttributes.length === 0) {
     return {
       showAsJson: true,
       results,
@@ -609,7 +591,8 @@ function getDetails(results, options, complete = true, queryExecutionId = null, 
   }
 
   const details = [];
-  const detailAttributes = processAttributeOption(options.detailAttributes);
+  // Use cached detail attributes instead of processing them again
+  const detailAttributes = cachedDetailAttributes;
 
   results.forEach((result) => {
     const document = [];
@@ -639,7 +622,7 @@ function getDetails(results, options, complete = true, queryExecutionId = null, 
         .join(' ');
 
       details.push({
-        title: getDocumentTitle(result, options),
+        title: getDocumentTitle(result),
         attributes: document,
         resultAsString: resultAsString
       });
@@ -658,18 +641,15 @@ function getDetails(results, options, complete = true, queryExecutionId = null, 
 function getSummaryTags(results, options) {
   const tags = [];
 
-  // Check if summaryAttributes is defined and not empty
-  if (
-    !options.summaryAttributes ||
-    typeof options.summaryAttributes !== 'string' ||
-    options.summaryAttributes.trim().length === 0
-  ) {
+  // Check if cached summary attributes are available
+  if (!cachedSummaryAttributes || cachedSummaryAttributes.length === 0) {
     // No summary attributes configured, just return result count
     tags.push(`${results.length} ${results.length === 1 ? 'result' : 'results'}`);
     return tags;
   }
 
-  const summaryAttributes = processAttributeOption(options.summaryAttributes);
+  // Use cached summary attributes instead of processing them again
+  const summaryAttributes = cachedSummaryAttributes;
 
   summaryAttributes.forEach((attributeObj) => {
     for (let i = 0; i < options.maxSummaryDocuments && i < results.length; i++) {
@@ -690,9 +670,7 @@ function getSummaryTags(results, options) {
   }
 
   // Remove duplicate tags as final cleanup step
-  const uniqueTags = [...new Set(tags)];
-  
-  return uniqueTags;
+  return [...new Set(tags)];
 }
 
 async function doLookup(entities, options, cb) {
@@ -711,6 +689,9 @@ async function doLookup(entities, options, cb) {
     currentPreparedStatement = null;
     currentQuery = null;
   }
+
+  // Process and cache attributes once at the beginning of doLookup
+  setCachedDisplayAttributes(options);
 
   // Ensure prepared statement exists once per doLookup call, not per entity
   let preparedStatementName = null;
@@ -789,6 +770,9 @@ async function onMessage(message, options, cb) {
       if (optionsHaveChanged(options) || athenaClient === null) {
         athenaClient = initializeAthenaClient(options);
       }
+
+      // Process and cache attributes for result formatting
+      setCachedDisplayAttributes(options);
 
       // Check query status and get results - reuse helper function
       const queryResult = await checkQueryStatusAndGetResults(queryExecutionId, options);
@@ -1033,6 +1017,44 @@ function formatQueryResult(queryResult, options) {
   return {
     summary: summary,
     details: details
+  };
+}
+
+function setCachedDisplayAttributes(options) {
+  // Check and update document title attributes cache
+  if (lastDocumentTitleAttributeOption !== options.documentTitleAttribute) {
+    if (options.documentTitleAttribute && typeof options.documentTitleAttribute === 'string' && options.documentTitleAttribute.trim().length > 0) {
+      cachedDocumentTitleAttributes = processAttributeOption(options.documentTitleAttribute);
+    } else {
+      cachedDocumentTitleAttributes = null;
+    }
+    lastDocumentTitleAttributeOption = options.documentTitleAttribute;
+  }
+
+  // Check and update detail attributes cache
+  if (lastDetailAttributesOption !== options.detailAttributes) {
+    if (options.detailAttributes && typeof options.detailAttributes === 'string' && options.detailAttributes.trim().length > 0) {
+      cachedDetailAttributes = processAttributeOption(options.detailAttributes);
+    } else {
+      cachedDetailAttributes = null;
+    }
+    lastDetailAttributesOption = options.detailAttributes;
+  }
+
+  // Check and update summary attributes cache
+  if (lastSummaryAttributesOption !== options.summaryAttributes) {
+    if (options.summaryAttributes && typeof options.summaryAttributes === 'string' && options.summaryAttributes.trim().length > 0) {
+      cachedSummaryAttributes = processAttributeOption(options.summaryAttributes);
+    } else {
+      cachedSummaryAttributes = null;
+    }
+    lastSummaryAttributesOption = options.summaryAttributes;
+  }
+
+  return {
+    documentTitleAttributes: cachedDocumentTitleAttributes,
+    detailAttributes: cachedDetailAttributes,
+    summaryAttributes: cachedSummaryAttributes
   };
 }
 

@@ -1,4 +1,5 @@
 {
+  "polarityIntegrationUuid": "61f7d440-db00-11f0-9f93-d3fa592a3358",
   "name": "AWS Athena",
   "acronym": "AWS-ATH",
   "logging": {

@@ -2,7 +2,7 @@
   "name": "AWS Athena",
   "acronym": "AWS-ATH",
   "logging": {
-    "level": "trace"
+    "level": "info"
   },
   "supportsAdditionalCustomTypes": true,
   "dataTypes": [

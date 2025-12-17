@@ -174,18 +174,18 @@
       {{/if}}
     </button>
     <div>
-            <span>
-              {{fa-icon icon="info-circle" class="stats-icon" fixedWidth=true}}
-              {{#bs-tooltip}}
-                <div style="text-align: left">
-                  <div><strong>Query Statistics</strong></div>
-                  <div>
-                    <span style="color: #cdced6;">Elapsed time:</span>
-                    <span>{{details.executionStats.elapsedSeconds}} seconds</span>
-                  </div>
-                </div>
-              {{/bs-tooltip}}
-            </span>
+      <span>
+        {{fa-icon icon="info-circle" class="stats-icon" fixedWidth=true}}
+        {{#bs-tooltip}}
+          <div style="text-align: left">
+            <div><strong>Query Statistics</strong></div>
+            <div>
+              <span style="color: #cdced6;">Elapsed time:</span>
+              <span>{{details.executionStats.elapsedSeconds}} seconds</span>
+            </div>
+          </div>
+        {{/bs-tooltip}}
+      </span>
     </div>
   </div>
   <div class="mt-1">

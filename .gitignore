@@ -27,3 +27,12 @@ README.html
 
 # Ignored installed NPM modules
 node_modules/
+
+# Ignore VSCode
+*.history
+.history
+*.vscode
+.vscode
+
+legacy_wrapper.js
+.DS_Store

@@ -195,7 +195,7 @@ function createParameterValue(entityValue, type = 'string') {
   }
 }
 
-async function createQuery(entity, options, preparedStatementName = null) {
+function createQuery(entity, options, preparedStatementName = null) {
   let queryString;
 
   if (options.query.includes('?')) {
@@ -697,7 +697,7 @@ async function doLookup(entities, options, cb) {
 
   const searchTasks = entities.map((entity) => {
     return async () => {
-      const queryParams = await createQuery(entity, options, preparedStatementName);
+      const queryParams = createQuery(entity, options, preparedStatementName);
       Logger.trace({ queryParams }, 'Athena SQL query parameters');
 
       const queryResult = await executeAthenaQuery(athenaClient, queryParams, options);

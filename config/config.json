@@ -1,0 +1,276 @@
+{
+  "polarityIntegrationUuid": "61f7d440-db00-11f0-9f93-d3fa592a3358",
+  "name": "AWS Athena",
+  "acronym": "AWS-ATH",
+  "logging": {
+    "level": "info"
+  },
+  "supportsAdditionalCustomTypes": true,
+  "dataTypes": [
+    "IPv4",
+    {
+      "type": "IPv6",
+      "enabled": false
+    },
+    {
+      "type": "domain",
+      "enabled": false
+    },
+    {
+      "type": "MD5",
+      "enabled": false
+    },
+    {
+      "type": "SHA1",
+      "enabled": false
+    },
+    {
+      "type": "SHA256",
+      "enabled": false
+    },
+    {
+      "type": "email",
+      "enabled": false
+    },
+    {
+      "type": "url",
+      "enabled": false
+    },
+    {
+      "type": "cve",
+      "enabled": false
+    },
+    {
+      "type": "MAC",
+      "enabled": false
+    }
+  ],
+  "entityTypes": [
+    "IPv4",
+    "IPv6",
+    "domain",
+    "url",
+    "cve",
+    "MD5",
+    "SHA1",
+    "SHA256",
+    "email"
+  ],
+  "description": "Query and display data from AWS Athena",
+  "defaultColor": "light-gray",
+  "styles": [
+    "./styles/style.less"
+  ],
+  "block": {
+    "component": {
+      "file": "./component/block.js"
+    },
+    "template": {
+      "file": "./template/block.hbs"
+    }
+  },
+  "options": [
+    {
+      "key": "region",
+      "name": "AWS Region",
+      "description": "The AWS Region for your Athena database.",
+      "default": {
+        "value": "us-east-2",
+        "display": "US East (Ohio)"
+      },
+      "options": [
+        {
+          "value": "us-east-2",
+          "display": "US East (Ohio)"
+        },
+        {
+          "value": "us-east-1",
+          "display": "US East (N. Virginia)"
+        },
+        {
+          "value": "us-west-1",
+          "display": "US West (N. California)"
+        },
+        {
+          "value": "us-west-2",
+          "display": "US West (Oregon)"
+        },
+        {
+          "value": "af-south-1",
+          "display": "Africa (Cape Town)"
+        },
+        {
+          "value": "ap-east-1",
+          "display": "Asia Pacific (Hong Kong)"
+        },
+        {
+          "value": "ap-southeast-3",
+          "display": "Asia Pacific (Jakarta)"
+        },
+        {
+          "value": "ap-south-1",
+          "display": "Asia Pacific (Mumbai)"
+        },
+        {
+          "value": "ap-northeast-3",
+          "display": "Asia Pacific (Osaka)"
+        },
+        {
+          "value": "ap-northeast-2",
+          "display": "Asia Pacific (Seoul)"
+        },
+        {
+          "value": "ap-southeast-1",
+          "display": "Asia Pacific (Singapore)"
+        },
+        {
+          "value": "ap-southeast-2",
+          "display": "Asia Pacific (Sydney)"
+        },
+        {
+          "value": "ap-northeast-1",
+          "display": "Asia Pacific (Tokyo)"
+        },
+        {
+          "value": "ca-central-1",
+          "display": "Canada (Central)"
+        },
+        {
+          "value": "eu-central-1",
+          "display": "Europe (Frankfurt)"
+        },
+        {
+          "value": "eu-west-1",
+          "display": "Europe (Ireland)"
+        },
+        {
+          "value": "eu-west-2",
+          "display": "Europe (London)"
+        },
+        {
+          "value": "eu-south-1",
+          "display": "Europe (Milan)"
+        },
+        {
+          "value": "eu-west-3",
+          "display": "Europe (Paris)"
+        },
+        {
+          "value": "eu-north-1",
+          "display": "Europe (Stockholm)"
+        },
+        {
+          "value": "me-south-1",
+          "display": "Middle East (Bahrain)"
+        },
+        {
+          "value": "sa-east-1",
+          "display": "South America (São Paulo)"
+        },
+        {
+          "value": "us-gov-east-1",
+          "display": "AWS GovCloud (US-East)"
+        },
+        {
+          "value": "us-gov-west-1",
+          "display": "AWS GovCloud (US-West)"
+        }
+      ],
+      "multiple": false,
+      "type": "select",
+      "userCanEdit": false,
+      "adminOnly": true
+    },
+    {
+      "key": "accessKeyId",
+      "name": "AWS Access Key Id",
+      "description": "The access key ID that identifies the security credentials used to authenticate to the specified Athena instance.  If left blank, credentials will be loaded from AWS IAM using the credentials provider of the Amazon EC2 instance (if configured in the instance metadata)",
+      "default": "",
+      "type": "text",
+      "userCanEdit": false,
+      "adminOnly": true
+    },
+    {
+      "key": "secretAccessKey",
+      "name": "AWS Secret Access Key",
+      "description": "The secret access key that can be used to sign requests. If left blank, credentials will be loaded from AWS IAM using the credentials provider of the Amazon EC2 instance (if configured in the instance metadata)",
+      "default": "",
+      "type": "password",
+      "userCanEdit": false,
+      "adminOnly": true
+    },
+    {
+      "key": "workGroup",
+      "name": "Athena WorkGroup",
+      "description": "The Athena WorkGroup to use for query execution. WorkGroups allow you to organize queries and manage execution settings. If your WorkGroup has a default ResultConfiguration, you may not need to specify an Output Location. Defaults to \"primary\" if not specified.",
+      "default": "primary",
+      "type": "text",
+      "userCanEdit": false,
+      "adminOnly": true
+    },
+    {
+      "key": "outputLocation",
+      "name": "Query Results Output Location",
+      "description": "S3 location where Athena should store query results (e.g., \"s3://my-bucket/athena-results/\"). This is optional if your WorkGroup has a default ResultConfiguration with an OutputLocation already configured.",
+      "default": "",
+      "type": "text",
+      "userCanEdit": false,
+      "adminOnly": true
+    },
+    {
+      "key": "query",
+      "name": "SQL Query",
+      "description": "The SQL query to execute for each entity searched. Supports both parameterized and non-parameterized queries. **Parameterized**: Use `?` as placeholder for entity value. Multiple `?` parameters are supported and will all use the same entity value - Examples:  - \"SELECT * FROM logs WHERE ip = ?\" - \"SELECT * FROM events WHERE (src_ip = ? OR dst_ip = ?)\" • **Non-parameterized**: Static queries without entity substitution - Example: \"SELECT COUNT(*) FROM logs WHERE date = CURRENT_DATE\" All `?` parameters will be replaced with the searched entity value.",
+      "default": "",
+      "type": "text",
+      "userCanEdit": false,
+      "adminOnly": true
+    },
+    {
+      "key": "limit",
+      "name": "Query Result Limit",
+      "description": "Set a limit on the number of results returned by the SQL query (defaults to 100). This affects how many rows are retrieved from Athena.",
+      "default": 100,
+      "type": "number",
+      "userCanEdit": false,
+      "adminOnly": true
+    },
+    {
+      "key": "summaryAttributes",
+      "name": "Summary Attributes",
+      "description": "Comma-delimited list of attribute names to include as part of the summary. JSON dot notation can be used to target nested attributes. Attributes must be returned by your SQL query to be displayed. You can change the label to your summary attribute by prepending the label to the attribute path and separating it with a colon (i.e., \"<label>:<json path>\"). For no label, use a colon with no label (i.e., \":<json path>\"). Clear cached results after making changes to this option if you would like to see the changes immediately.",
+      "default": "",
+      "type": "text",
+      "userCanEdit": false,
+      "adminOnly": true
+    },
+    {
+      "key": "maxSummaryDocuments",
+      "name": "Maximum Number of Summary Items",
+      "description": "Number of items to show summary tags for.  Defaults to 3.  If the limit is reached, a total count will be shown.",
+      "default": 3,
+      "type": "number",
+      "userCanEdit": false,
+      "adminOnly": true
+    },
+    {
+      "key": "detailAttributes",
+      "name": "Detail Attributes",
+      "description": "Comma-delimited list of attribute names to include as part of the details block. JSON dot notation can be used to target nested attributes. Attributes must be returned by your SQL query to be displayed. You can change the label to your detail attribute by prepending the label to the attribute path and separating it with a colon (i.e., \"<label>:<json path>\"). If left blank, all fields will be displayed as a JSON document. Clear cached results after making changes to this option if you would like to see the changes immediately.",
+      "default": "",
+      "type": "text",
+      "userCanEdit": false,
+      "adminOnly": true
+    },
+    {
+      "key": "documentTitleAttribute",
+      "name": "Item Title Attribute",
+      "description": "Name of the attribute to be used as the item title. JSON dot notation can be used to target nested attributes. Attribute must be returned by your SQL query to be displayed. You can change the label to your document attribute by prepending the label to the attribute path and separating it with a colon (i.e., \"<label>:<json path>\"). For no label, use a colon with no label (i.e., \":<json path>\"). Clear cached results after making changes to this option if you would like to see the changes immediately.",
+      "default": "",
+      "type": "text",
+      "userCanEdit": false,
+      "adminOnly": true
+    }
+  ]
+}
+

@@ -1,0 +1,12 @@
+{
+  "main": "./integration.js",
+  "name": "aws-athena",
+  "version": "3.0.0",
+  "private": true,
+  "dependencies": {
+    "@aws-sdk/client-athena": "^3.922.0",
+    "luxon": "^3.7.2",
+    "lodash": "^4.17.21",
+    "async": "^3.2.6"
+  }
+}

@@ -14,6 +14,15 @@ const {
 const { get } = require('lodash');
 const { DateTime } = require('luxon');
 
+// Query status constants
+const QUERY_STATUS = {
+  SUCCEEDED: 'SUCCEEDED',
+  RUNNING: 'RUNNING',
+  QUEUED: 'QUEUED',
+  FAILED: 'FAILED',
+  CANCELLED: 'CANCELLED'
+};
+
 // Athena query execution configuration constants
 const MAX_QUERY_STATUS_POLLING_ATTEMPTS = 10; // 10 attempts * 3 second interval = 30 seconds wait time 
 const POLLING_WAIT_INTERVAL = 3000; // 3 second intervals
@@ -291,11 +300,11 @@ async function executeAthenaQuery(athenaClient, queryParams, options) {
   Logger.trace({ queryExecutionId }, 'Started Athena query execution');
 
   // Wait for query to complete with timeout
-  let queryStatus = 'RUNNING';
+  let queryStatus = QUERY_STATUS.RUNNING;
   let attempts = 0;
   let statusResult = null;
 
-  while (queryStatus === 'RUNNING' || queryStatus === 'QUEUED') {
+  while (queryStatus === QUERY_STATUS.RUNNING || queryStatus === QUERY_STATUS.QUEUED) {
     if (attempts >= MAX_QUERY_STATUS_POLLING_ATTEMPTS) {
       Logger.trace(
         {
@@ -340,9 +349,9 @@ async function executeAthenaQuery(athenaClient, queryParams, options) {
     attempts++;
   }
 
-  if (queryStatus === 'FAILED' || queryStatus === 'CANCELLED') {
+  if (queryStatus === QUERY_STATUS.FAILED || queryStatus === QUERY_STATUS.CANCELLED) {
     const errorMsg =
-      queryStatus === 'FAILED'
+      queryStatus === QUERY_STATUS.FAILED
         ? `Query failed: ${statusResult.QueryExecution.Status.StateChangeReason}`
         : 'Query was cancelled';
     throw new Error(errorMsg);
@@ -851,7 +860,7 @@ async function checkQueryStatusAndGetResults(queryExecutionId, options) {
 
   Logger.trace({ queryStatus, queryExecutionId }, 'Retrieved query status');
 
-  if (queryStatus === 'SUCCEEDED') {
+  if (queryStatus === QUERY_STATUS.SUCCEEDED) {
     // Query completed successfully, get results
     const executionStats = statusResult.QueryExecution.Statistics || {};
     const queryExecution = statusResult.QueryExecution || {};
@@ -911,7 +920,7 @@ async function checkQueryStatusAndGetResults(queryExecutionId, options) {
       queryExecutionId: queryExecutionId,
       executionStats: queryStats
     };
-  } else if (queryStatus === 'RUNNING' || queryStatus === 'QUEUED') {
+  } else if (queryStatus === QUERY_STATUS.RUNNING || queryStatus === QUERY_STATUS.QUEUED) {
     // Query still running
     const partialStats = statusResult.QueryExecution?.Statistics || {};
     const queryExecution = statusResult.QueryExecution || {};
@@ -935,7 +944,7 @@ async function checkQueryStatusAndGetResults(queryExecutionId, options) {
       queryExecutionId: queryExecutionId,
       executionStats: incompleteStats
     };
-  } else if (queryStatus === 'FAILED' || queryStatus === 'CANCELLED') {
+  } else if (queryStatus === QUERY_STATUS.FAILED || queryStatus === QUERY_STATUS.CANCELLED) {
     // Query failed or was cancelled
     const errorReason = statusResult.QueryExecution.Status.StateChangeReason || 'Unknown error';
     throw new Error(`Query ${queryStatus.toLowerCase()}: ${errorReason}`);
